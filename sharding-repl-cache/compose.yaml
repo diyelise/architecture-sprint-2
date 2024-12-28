@@ -1,0 +1,205 @@
+version: '3'
+services:
+
+  configSrv:
+    image: mongo:7.0
+    container_name: configSrv
+    restart: always
+    ports:
+      - "27017:27017"
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.10
+    volumes:
+      - config-data:/data/db
+    command:
+      [
+        "--configsvr",
+        "--replSet",
+        "config_server",
+        "--bind_ip_all",
+        "--port",
+        "27017"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27017","--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+
+  mongos_router:
+    image: mongo:7.0
+    container_name: mongos_router
+    restart: always
+    ports:
+      - "27024:27024"
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.17
+    command:
+      [
+        "mongos",
+        "--configdb",
+        "config_server/configSrv:27017",
+        "--bind_ip_all",
+        "--port",
+        "27024"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27024","--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  shard1-master:
+    image: mongo:7.0
+    container_name: shard1-master
+    restart: always
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.11
+    volumes:
+      - shard1-master-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard1",
+        "--bind_ip_all",
+        "--port",
+        "27018"
+      ]
+
+  shard1-slave1:
+    image: mongo:7.0
+    container_name: shard1-slave1
+    restart: always
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.12
+    volumes:
+      - shard1-slave1-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard1",
+        "--bind_ip_all",
+        "--port",
+        "27019"
+      ]
+
+  shard1-slave2:
+    image: mongo:7.0
+    container_name: shard1-slave2
+    restart: always
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.13
+    volumes:
+      - shard1-slave2-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard1",
+        "--bind_ip_all",
+        "--port",
+        "27020"
+      ]
+
+  shard2-master:
+    image: mongo:7.0
+    container_name: shard2-master
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.14
+    volumes:
+      - shard2-master-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27021"
+      ]
+
+  shard2-slave1:
+    image: mongo:7.0
+    container_name: shard2-slave1
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.15
+    volumes:
+      - shard2-slave1-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27022"
+      ]
+
+  shard2-slave2:
+    image: mongo:7.0
+    container_name: shard2-slave2
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.16
+    volumes:
+      - shard2-slave2-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27023"
+      ]
+
+  redis:
+    image: redis:6.0
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  pymongo_api:
+    container_name: pymongo_api
+    build:
+      context: api_app
+      dockerfile: Dockerfile
+    image: kazhem/pymongo_api:1.0.0
+    depends_on:
+      - mongos_router
+      - redis
+    ports:
+      - "8080:8080"
+    networks:
+      app-network:
+        ipv4_address: 173.18.0.6
+    environment:
+      MONGODB_URL: "mongodb://mongos_router:27024"
+      MONGODB_DATABASE_NAME: "somedb"
+      REDIS_URL: "redis://redis:6379"
+
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 173.18.0.0/16
+
+volumes:
+  config-data:
+  shard1-master-data:
+  shard1-slave1-data:
+  shard1-slave2-data:
+  shard2-master-data:
+  shard2-slave1-data:
+  shard2-slave2-data:
